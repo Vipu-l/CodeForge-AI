@@ -6,7 +6,7 @@ def parse_python_file(file_path: str) -> list[dict]:
     Parse a Python file and extract meaningful code chunks.
     """
 
-    with open(file_path, "r", encoding="utf-8") as file:
+    with open(file_path, "r", encoding="utf-8-sig") as file:
         source_code = file.read()
 
     tree = ast.parse(source_code)

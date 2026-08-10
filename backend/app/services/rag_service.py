@@ -2,15 +2,41 @@ from app.services.embedding_service import generate_embedding
 from app.services.llm_service import generate_answer
 
 
+def cosine_similarity(vector_a, vector_b):
+    """
+    Calculate cosine similarity between two vectors.
+    """
+
+    import numpy as np
+
+    a = np.array(vector_a)
+    b = np.array(vector_b)
+
+    denominator = (
+        np.linalg.norm(a) *
+        np.linalg.norm(b)
+    )
+
+    if denominator == 0:
+        return 0.0
+
+    return float(
+        np.dot(a, b) / denominator
+    )
+
+
 def build_context(results: list[dict]) -> str:
     """
-    Convert retrieved code chunks into context
-    that can be sent to the LLM.
+    Convert retrieved code chunks into
+    context for Gemini.
     """
 
     context_parts = []
 
-    for index, result in enumerate(results, start=1):
+    for index, result in enumerate(
+        results,
+        start=1
+    ):
 
         document = result["document"]
         score = result["score"]
@@ -18,11 +44,21 @@ def build_context(results: list[dict]) -> str:
         context_parts.append(
             f"""
 SOURCE {index}
-File: {document.get("file", "unknown")}
-Type: {document.get("type", "unknown")}
-Name: {document.get("name", "unknown")}
-Lines: {document.get("start_line", "?")}-{document.get("end_line", "?")}
-Similarity: {score:.4f}
+
+File:
+{document.get("file", "unknown")}
+
+Type:
+{document.get("type", "unknown")}
+
+Name:
+{document.get("name", "unknown")}
+
+Lines:
+{document.get("start_line", "?")}-{document.get("end_line", "?")}
+
+Similarity:
+{score:.4f}
 
 CODE:
 {document.get("code", "")}
@@ -37,44 +73,44 @@ def answer_question(
     search_index,
     top_k: int = 5
 ) -> dict:
-    """
-    Retrieve relevant code and ask Gemini
-    to answer using that context.
-    """
 
-    # Convert the question into an embedding
-    query_embedding = generate_embedding(question)
+    query_embedding = generate_embedding(
+        question
+    )
 
-    # Search the HNSW index
     results = search_index.search(
         query_embedding,
         top_k=top_k
     )
 
     if not results:
+
         return {
-            "answer": "I couldn't find relevant code in the repository.",
+            "answer": (
+                "I couldn't find relevant code "
+                "in the repository."
+            ),
             "sources": []
         }
 
-    # Convert retrieved code into context
-    context = build_context(results)
+    context = build_context(
+        results
+    )
 
     prompt = f"""
-You are CodeForge AI, an AI assistant that understands
-software repositories.
+You are CodeForge AI, an AI assistant
+that understands software repositories.
 
-Answer the user's question using ONLY the supplied
-repository context.
+Answer the user's question using ONLY
+the supplied repository context.
 
-Do not invent files, functions, classes, or behavior
-that are not present in the context.
+Do not invent files, functions, classes,
+or behavior that are not present.
 
-If the context is insufficient, clearly say that you
-do not have enough information.
+If the context is insufficient, say so.
 
-Always mention relevant source files and line numbers
-when possible.
+Always mention relevant source files
+and line numbers when possible.
 
 USER QUESTION:
 {question}
@@ -82,13 +118,12 @@ USER QUESTION:
 REPOSITORY CONTEXT:
 {context}
 
-Give a clear and technically accurate answer.
+Give a clear and technically accurate
+answer based only on the provided code.
 """
 
-    # Send the RAG prompt to Gemini
     answer = generate_answer(prompt)
 
-    # Prepare source information
     sources = []
 
     for result in results:

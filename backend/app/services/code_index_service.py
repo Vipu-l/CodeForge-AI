@@ -2,7 +2,7 @@ import os
 
 from app.services.code_parser import parse_python_file
 from app.services.embedding_service import generate_embedding
-from app.services.hnsw_index import HNSWIndex
+from app.services.vector_store import VectorStore
 
 
 SUPPORTED_EXTENSIONS = {
@@ -21,9 +21,11 @@ IGNORED_DIRECTORIES = {
 
 def build_code_index(repository_path: str):
 
-    index = HNSWIndex()
+    store = VectorStore()
 
-    for root, directories, files in os.walk(repository_path):
+    for root, directories, files in os.walk(
+        repository_path
+    ):
 
         directories[:] = [
             directory
@@ -33,7 +35,9 @@ def build_code_index(repository_path: str):
 
         for filename in files:
 
-            extension = os.path.splitext(filename)[1].lower()
+            extension = os.path.splitext(
+                filename
+            )[1].lower()
 
             if extension not in SUPPORTED_EXTENSIONS:
                 continue
@@ -58,14 +62,19 @@ def build_code_index(repository_path: str):
                         f"Code:\n{chunk['code']}"
                     )
 
-                    embedding = generate_embedding(text)
-
-                    index.add(
-                        embedding,
-                        chunk
+                    embedding = generate_embedding(
+                        text
                     )
 
-            except (SyntaxError, UnicodeDecodeError):
+                    store.add(
+                        chunk,
+                        embedding
+                    )
+
+            except (
+                SyntaxError,
+                UnicodeDecodeError
+            ):
                 continue
 
-    return index
+    return store
