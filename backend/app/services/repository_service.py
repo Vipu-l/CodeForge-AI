@@ -52,9 +52,9 @@ def clone_repository(repo_url: str, repository_name: str) -> str:
     # If the repository is already cloned,
     # reuse the existing copy.
     if os.path.exists(repository_path):
-    repo = Repo(repository_path)
-    repo.remotes.origin.pull()
-    return repository_path
+        repo = Repo(repository_path)
+        repo.remotes.origin.pull()
+        return repository_path
 
     Repo.clone_from(repo_url, repository_path)
 

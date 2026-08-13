@@ -1,4 +1,7 @@
 from fastapi import APIRouter, HTTPException
+from app.services.code_index_service import build_code_index
+from app.services.index_manager import save_index
+
 
 from app.services.repository_service import (
     clone_repository,
@@ -35,6 +38,15 @@ def analyze_repository(repo_url: str):
             all_files
         )
 
+
+        code_index = build_code_index(
+            repository_path
+        )
+
+        save_index(
+            repository_name,
+            code_index
+        )        
         return {
             "repository": repository_name,
             "total_files": len(all_files),
