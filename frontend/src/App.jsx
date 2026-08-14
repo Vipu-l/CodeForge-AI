@@ -8,11 +8,18 @@ function App() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState(null);
 
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileContent, setFileContent] = useState("");
+  const [fileLoading, setFileLoading] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
 
-  // Analyze GitHub repository
+  // --------------------------------------------------
+  // Analyze GitHub Repository
+  // --------------------------------------------------
+
   const analyzeRepository = async () => {
     if (!repoUrl.trim()) {
       setError("Please enter a GitHub repository URL.");
@@ -23,6 +30,8 @@ function App() {
     setError("");
     setRepository(null);
     setAnswer(null);
+    setSelectedFile(null);
+    setFileContent("");
 
     try {
       const response = await fetch(
@@ -51,7 +60,48 @@ function App() {
     }
   };
 
-  // Ask AI about the analyzed repository
+  // --------------------------------------------------
+  // Open Repository File
+  // --------------------------------------------------
+
+  const openFile = async (filePath) => {
+    if (!repository) {
+      return;
+    }
+
+    setSelectedFile(filePath);
+    setFileLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/repositories/file?repository=${encodeURIComponent(
+          repository.repository
+        )}&file_path=${encodeURIComponent(filePath)}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Failed to load file."
+        );
+      }
+
+      setFileContent(data.content);
+    } catch (error) {
+      console.error("File loading error:", error);
+      setError(error.message);
+      setFileContent("");
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // Ask AI
+  // --------------------------------------------------
+
   const askQuestion = async () => {
     if (!question.trim()) {
       setError("Please enter a question.");
@@ -71,7 +121,9 @@ function App() {
       const response = await fetch(
         `http://127.0.0.1:8000/api/questions/ask?question=${encodeURIComponent(
           question
-        )}&repository=${encodeURIComponent(repository.repository)}`,
+        )}&repository=${encodeURIComponent(
+          repository.repository
+        )}`,
         {
           method: "POST",
         }
@@ -94,6 +146,10 @@ function App() {
     }
   };
 
+  // --------------------------------------------------
+  // UI
+  // --------------------------------------------------
+
   return (
     <div className="app">
 
@@ -111,14 +167,14 @@ function App() {
 
       <main className="container">
 
-        {/* Error */}
+        {/* Error Message */}
         {error && (
           <div className="error">
             {error}
           </div>
         )}
 
-        {/* Hero / Repository Input */}
+        {/* Hero */}
         <section className="hero">
 
           <h1>
@@ -164,7 +220,7 @@ function App() {
         {repository && (
           <section className="dashboard">
 
-            {/* Repository Name */}
+            {/* Repository Header */}
             <div className="repository-header">
 
               <div>
@@ -220,9 +276,14 @@ function App() {
                 {repository.files.map(
                   (file, index) => (
 
-                    <div
-                      className="file-item"
+                    <button
+                      className={`file-item ${
+                        selectedFile === file
+                          ? "selected-file"
+                          : ""
+                      }`}
                       key={index}
+                      onClick={() => openFile(file)}
                     >
 
                       <span>
@@ -233,9 +294,49 @@ function App() {
                         {file}
                       </span>
 
-                    </div>
+                    </button>
 
                   )
+                )}
+
+              </div>
+
+            </div>
+
+            {/* Code Explorer */}
+            <div className="code-section">
+
+              <div className="code-header">
+
+                <h3>
+                  {selectedFile || "Code Viewer"}
+                </h3>
+
+              </div>
+
+              <div className="code-viewer">
+
+                {fileLoading ? (
+
+                  <div className="code-message">
+                    Loading file...
+                  </div>
+
+                ) : selectedFile ? (
+
+                  <pre>
+                    <code>
+                      {fileContent}
+                    </code>
+                  </pre>
+
+                ) : (
+
+                  <div className="code-message">
+                    Select a file to view its source
+                    code.
+                  </div>
+
                 )}
 
               </div>
@@ -260,6 +361,15 @@ function App() {
                 onChange={(event) =>
                   setQuestion(event.target.value)
                 }
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey
+                  ) {
+                    event.preventDefault();
+                    askQuestion();
+                  }
+                }}
                 placeholder="How does the API handle repository analysis?"
                 disabled={asking}
               />
@@ -284,6 +394,7 @@ function App() {
               <div className="answer-section">
 
                 <div className="answer-header">
+
                   <h3>
                     AI Answer
                   </h3>
@@ -291,6 +402,7 @@ function App() {
                   <span className="ai-badge">
                     AI
                   </span>
+
                 </div>
 
                 <div className="answer-text">
@@ -356,6 +468,7 @@ function App() {
 
       </main>
 
+      {/* Footer */}
       <footer className="footer">
         CodeForge AI • AI-powered codebase intelligence
       </footer>

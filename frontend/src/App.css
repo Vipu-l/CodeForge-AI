@@ -343,3 +343,78 @@ body {
   color: #8993aa;
   font-size: 12px;
 }
+
+/* Code Explorer */
+
+.code-section {
+  margin-top: 25px;
+  border: 1px solid #20283d;
+  border-radius: 14px;
+  background: #11182c;
+  overflow: hidden;
+}
+
+.code-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #20283d;
+}
+
+.code-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-family: monospace;
+  color: #dbe4f5;
+}
+
+.code-viewer {
+  min-height: 400px;
+  max-height: 650px;
+  overflow: auto;
+  background: #080d1a;
+}
+
+.code-viewer pre {
+  margin: 0;
+  padding: 20px;
+}
+
+.code-viewer code {
+  color: #d1d5db;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.code-message {
+  padding: 40px;
+  text-align: center;
+  color: #6b7280;
+}
+
+/* Clickable files */
+
+.file-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 5px;
+  border: none;
+  border-bottom: 1px solid #20283d;
+  background: transparent;
+  color: #cbd3e3;
+  font-family: monospace;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-item:hover {
+  background: #18213a;
+}
+
+.file-item.selected-file {
+  background: #202b4a;
+  color: white;
+}
