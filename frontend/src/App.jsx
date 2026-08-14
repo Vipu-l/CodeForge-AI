@@ -45,13 +45,13 @@ function App() {
       setRepository(data);
     } catch (error) {
       console.error("Repository analysis error:", error);
-      setError(error.message || "Failed to analyze repository.");
+      setError(error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Ask question about repository
+  // Ask AI about the analyzed repository
   const askQuestion = async () => {
     if (!question.trim()) {
       setError("Please enter a question.");
@@ -65,6 +65,7 @@ function App() {
 
     setAsking(true);
     setError("");
+    setAnswer(null);
 
     try {
       const response = await fetch(
@@ -87,7 +88,7 @@ function App() {
       setAnswer(data);
     } catch (error) {
       console.error("Ask AI error:", error);
-      setError(error.message || "Failed to get AI answer.");
+      setError(error.message);
     } finally {
       setAsking(false);
     }
@@ -96,40 +97,45 @@ function App() {
   return (
     <div className="app">
 
-      {/* Header */}
-      <header className="header">
-        <div className="header-content">
-          <h1>CodeForge AI</h1>
-          <p>
-            AI-powered codebase intelligence platform
-          </p>
+      {/* Navbar */}
+      <header className="navbar">
+        <div className="logo">
+          CodeForge AI
+        </div>
+
+        <div className="nav-status">
+          <span className="status-dot"></span>
+          AI Code Intelligence
         </div>
       </header>
 
       <main className="container">
 
-        {/* Error Message */}
+        {/* Error */}
         {error && (
-          <div className="error-message">
+          <div className="error">
             {error}
           </div>
         )}
 
-        {/* Analyze Repository */}
-        <section className="card">
+        {/* Hero / Repository Input */}
+        <section className="hero">
 
-          <h2>Analyze Repository</h2>
+          <h1>
+            Understand any codebase with AI.
+          </h1>
 
-          <p className="description">
-            Enter a public GitHub repository URL to
-            analyze its codebase.
+          <p>
+            Connect a public GitHub repository and
+            explore its codebase using AI-powered
+            semantic search and RAG.
           </p>
 
-          <div className="input-row">
+          <div className="repo-input">
 
             <input
               type="text"
-              placeholder="https://github.com/user/repository"
+              placeholder="https://github.com/username/repository"
               value={repoUrl}
               onChange={(event) =>
                 setRepoUrl(event.target.value)
@@ -142,7 +148,6 @@ function App() {
             />
 
             <button
-              className="primary-button"
               onClick={analyzeRepository}
               disabled={loading}
             >
@@ -155,20 +160,26 @@ function App() {
 
         </section>
 
-        {/* Repository Results */}
+        {/* Repository Dashboard */}
         {repository && (
-          <section className="card">
+          <section className="dashboard">
 
+            {/* Repository Name */}
             <div className="repository-header">
 
               <div>
-                <h2>{repository.repository}</h2>
+                <span className="label">
+                  Repository
+                </span>
 
-                <p className="description">
-                  Repository analysis completed
-                  successfully.
-                </p>
+                <h2>
+                  {repository.repository}
+                </h2>
               </div>
+
+              <span className="analyzed-badge">
+                ✓ Analyzed
+              </span>
 
             </div>
 
@@ -176,31 +187,33 @@ function App() {
             <div className="stats">
 
               <div className="stat-card">
-                <span className="stat-number">
-                  {repository.total_files}
-                </span>
-
-                <span className="stat-label">
+                <span>
                   Total Files
                 </span>
+
+                <strong>
+                  {repository.total_files}
+                </strong>
               </div>
 
               <div className="stat-card">
-                <span className="stat-number">
-                  {repository.source_files}
-                </span>
-
-                <span className="stat-label">
+                <span>
                   Source Files
                 </span>
+
+                <strong>
+                  {repository.source_files}
+                </strong>
               </div>
 
             </div>
 
-            {/* Files */}
+            {/* Repository Files */}
             <div className="files-section">
 
-              <h3>Files</h3>
+              <h3>
+                Repository Files
+              </h3>
 
               <div className="file-list">
 
@@ -211,7 +224,15 @@ function App() {
                       className="file-item"
                       key={index}
                     >
-                      {file}
+
+                      <span>
+                        📄
+                      </span>
+
+                      <span>
+                        {file}
+                      </span>
+
                     </div>
 
                   )
@@ -221,118 +242,122 @@ function App() {
 
             </div>
 
-          </section>
-        )}
+            {/* Ask AI */}
+            <div className="ask-section">
 
-        {/* Ask CodeForge */}
-        <section className="card">
+              <h3>
+                Ask CodeForge AI
+              </h3>
 
-          <h2>Ask CodeForge</h2>
+              <p>
+                Ask questions about this repository.
+                CodeForge AI will search the codebase
+                and generate an answer using RAG.
+              </p>
 
-          <p className="description">
-            Ask questions about the analyzed
-            repository and get answers based on
-            its source code.
-          </p>
+              <textarea
+                value={question}
+                onChange={(event) =>
+                  setQuestion(event.target.value)
+                }
+                placeholder="How does the API handle repository analysis?"
+                disabled={asking}
+              />
 
-          <textarea
-            className="question-input"
-            placeholder={
-              repository
-                ? "How does the API handle repository analysis?"
-                : "Analyze a repository first..."
-            }
-            value={question}
-            onChange={(event) =>
-              setQuestion(event.target.value)
-            }
-            disabled={!repository || asking}
-          />
+              <button
+                className="ask-button"
+                onClick={askQuestion}
+                disabled={
+                  asking ||
+                  !question.trim()
+                }
+              >
+                {asking
+                  ? "Thinking..."
+                  : "Ask AI"}
+              </button>
 
-          <button
-            className="primary-button ask-button"
-            onClick={askQuestion}
-            disabled={
-              !repository ||
-              !question.trim() ||
-              asking
-            }
-          >
-            {asking
-              ? "Thinking..."
-              : "Ask AI"}
-          </button>
-
-        </section>
-
-        {/* AI Answer */}
-        {answer && (
-          <section className="card answer-card">
-
-            <h2>AI Answer</h2>
-
-            <div className="answer-text">
-              {answer.answer}
             </div>
 
-            {/* Sources */}
-            {answer.sources &&
-              answer.sources.length > 0 && (
+            {/* AI Answer */}
+            {answer && (
+              <div className="answer-section">
 
-                <div className="sources-section">
+                <div className="answer-header">
+                  <h3>
+                    AI Answer
+                  </h3>
 
-                  <h3>Sources</h3>
-
-                  {answer.sources.map(
-                    (source, index) => (
-
-                      <div
-                        className="source-item"
-                        key={index}
-                      >
-
-                        <div className="source-file">
-                          {source.file}
-                        </div>
-
-                        <div className="source-details">
-                          Lines{" "}
-                          {source.start_line}
-                          {" - "}
-                          {source.end_line}
-
-                          {source.score !==
-                            undefined && (
-                            <>
-                              {" • "}
-                              Similarity:{" "}
-                              {source.score.toFixed(
-                                4
-                              )}
-                            </>
-                          )}
-                        </div>
-
-                      </div>
-
-                    )
-                  )}
-
+                  <span className="ai-badge">
+                    AI
+                  </span>
                 </div>
 
-              )}
+                <div className="answer-text">
+                  {answer.answer}
+                </div>
+
+                {/* Sources */}
+                {answer.sources &&
+                  answer.sources.length > 0 && (
+
+                    <div className="sources-section">
+
+                      <h3>
+                        Sources
+                      </h3>
+
+                      {answer.sources.map(
+                        (source, index) => (
+
+                          <div
+                            className="source-item"
+                            key={index}
+                          >
+
+                            <div className="source-file">
+                              📄 {source.file}
+                            </div>
+
+                            <div className="source-details">
+
+                              Lines{" "}
+                              {source.start_line}
+                              {" - "}
+                              {source.end_line}
+
+                              {source.score !==
+                                undefined && (
+                                <>
+                                  {" • "}
+                                  Similarity:{" "}
+                                  {source.score.toFixed(
+                                    4
+                                  )}
+                                </>
+                              )}
+
+                            </div>
+
+                          </div>
+
+                        )
+                      )}
+
+                    </div>
+
+                  )}
+
+              </div>
+            )}
 
           </section>
         )}
 
       </main>
 
-      {/* Footer */}
       <footer className="footer">
-        <p>
-          CodeForge AI • AI-powered codebase
-          intelligence
-        </p>
+        CodeForge AI • AI-powered codebase intelligence
       </footer>
 
     </div>
