@@ -191,23 +191,38 @@ def _normalize_text(
     )
 
 
+# --------------------------------------------------
+# Identifier extraction
+# --------------------------------------------------
+
 def _extract_identifier(
     question: str
 ):
     """
     Extract a likely code identifier from a question.
 
-    Examples:
+    Handles examples such as:
 
         get_index()
         VectorStore.search()
         build_code_index
-    """
+        ask_question in question.py
 
+    Function-style identifiers are preferred first.
+
+    For identifiers without parentheses, code-style
+    names containing underscores are preferred over
+    ordinary words from the question.
+    """
+    if _is_architecture_question(question):
+        return None
     if not question:
         return None
 
-    # Match function-style identifiers first.
+    # --------------------------------------------------
+    # 1. Prefer identifiers followed by ()
+    # --------------------------------------------------
+
     match = re.search(
         r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(",
         question
@@ -215,6 +230,10 @@ def _extract_identifier(
 
     if match:
         return match.group(1)
+
+    # --------------------------------------------------
+    # 2. Extract possible identifiers
+    # --------------------------------------------------
 
     candidates = re.findall(
         r"\b[A-Za-z_][A-Za-z0-9_]*\b",
@@ -248,18 +267,75 @@ def _extract_identifier(
         "from",
         "to",
         "and",
-        "travel"
+        "travel",
+        "in",
+        "on",
+        "for",
+        "about",
+        "including",
+        "all",
+        "imports",
+        "parameters",
+        "calls",
+        "error",
+        "handling",
+        "call",
+        "answer",
+        "question",
+        "file",
+        "source",
+        "py",
+        "js",
+        "jsx",
+        "ts",
+        "tsx",
+        "java",
+        "cpp",
+        "c",
+        "go",
+        "rs",
+        "php",
+        "rb"
     }
 
-    for candidate in reversed(
-        candidates
-    ):
+    # --------------------------------------------------
+    # 3. Prefer code-style identifiers
+    # --------------------------------------------------
+
+    code_identifiers = []
+
+    for candidate in candidates:
+
+        if candidate.lower() in ignored_words:
+            continue
+
+        # Functions such as:
+        # ask_question
+        # get_index
+        # build_code_index
+        if "_" in candidate:
+            code_identifiers.append(
+                candidate
+            )
+
+    if code_identifiers:
+        return code_identifiers[0]
+
+    # --------------------------------------------------
+    # 4. Fall back to other useful identifiers
+    # --------------------------------------------------
+
+    for candidate in candidates:
 
         if candidate.lower() not in ignored_words:
             return candidate
 
     return None
 
+
+# --------------------------------------------------
+# Lexical matching
+# --------------------------------------------------
 
 def _question_tokens(
     question: str
@@ -402,10 +478,30 @@ def _text_match_score(
     ):
         return 0.85
 
-    # Identifier appears in filename.
+    # Identifier appears in the actual filename.
+    #
+    # Do not search the entire repository path here.
+    # For example, the identifier "App" must not match
+    # every file under a directory named "app".
+    document_filename = (
+        document_file
+        .replace("\\", "/")
+        .rstrip("/")
+        .split("/")[-1]
+    )
+
     if (
         normalized_identifier
-        and normalized_identifier in document_file
+        and (
+            normalized_identifier
+            == _normalize_text(
+                document_filename
+            )
+            or normalized_identifier
+            in _normalize_text(
+                document_filename
+            )
+        )
     ):
         return 0.85
 
@@ -628,6 +724,7 @@ def _augment_candidates(
         get_index()
         build_code_index
         VectorStore.search()
+        ask_question
 
     and for architecture questions requiring multiple
     files.
@@ -637,9 +734,9 @@ def _augment_candidates(
 
     seen = set()
 
-    # ----------------------------------------------
+    # --------------------------------------------------
     # Keep semantic candidates first.
-    # ----------------------------------------------
+    # --------------------------------------------------
 
     for result in semantic_results:
 
@@ -661,9 +758,9 @@ def _augment_candidates(
             dict(result)
         )
 
-    # ----------------------------------------------
+    # --------------------------------------------------
     # Scan all indexed documents for exact matches.
-    # ----------------------------------------------
+    # --------------------------------------------------
 
     all_documents = _get_all_documents(
         search_index
@@ -742,16 +839,16 @@ def _augment_candidates(
                     else 0.85
                 })
 
-        # Exact candidates are deliberately added
-        # before general lexical candidates.
+        # Exact candidates are deliberately added before
+        # general lexical candidates.
         candidates.extend(
             exact_candidates
         )
 
-    # ----------------------------------------------
+    # --------------------------------------------------
     # Add lexical candidates for architecture/
     # behavioral questions.
-    # ----------------------------------------------
+    # --------------------------------------------------
 
     architecture_question = (
         _is_architecture_question(
@@ -892,7 +989,14 @@ def _rerank_results(
         )
 
         # Exact identifier query.
-        if text_match_score > 0:
+        # An exact function/method/class/module match must
+        # outrank semantic matches so the requested source
+        # chunk is guaranteed to survive final selection.
+        if text_match_score >= 0.85:
+
+            combined_score = 1.0
+
+        elif text_match_score > 0:
 
             combined_score = (
                 semantic_score * 0.20
@@ -991,9 +1095,9 @@ def _diversify_results(
     selected_keys = set()
     file_counts = {}
 
-    # ----------------------------------------------
+    # --------------------------------------------------
     # First pass: exact matches.
-    # ----------------------------------------------
+    # --------------------------------------------------
 
     for result in results:
 
@@ -1041,10 +1145,10 @@ def _diversify_results(
         if len(selected) >= limit:
             return selected
 
-    # ----------------------------------------------
+    # --------------------------------------------------
     # Architecture questions:
     # first try to select different files.
-    # ----------------------------------------------
+    # --------------------------------------------------
 
     if architecture_question:
 
@@ -1089,9 +1193,9 @@ def _diversify_results(
 
             file_counts[file_path] = 1
 
-    # ----------------------------------------------
+    # --------------------------------------------------
     # Second pass: fill remaining slots by score.
-    # ----------------------------------------------
+    # --------------------------------------------------
 
     for result in results:
 
@@ -1128,6 +1232,7 @@ def _diversify_results(
 def _search_index(
     question: str,
     search_index,
+    query_embedding=None,
     top_k: int = RETRIEVAL_K
 ):
     """
@@ -1136,9 +1241,10 @@ def _search_index(
     rerank them, and diversify the final results.
     """
 
-    query_embedding = generate_embedding(
-        question
-    )
+    if query_embedding is None:
+        query_embedding = generate_embedding(
+            question
+        )
 
     semantic_results = search_index.search(
         query_embedding,
@@ -1302,6 +1408,7 @@ def answer_question(
     retrieved_results = _search_index(
         question,
         search_index,
+        query_embedding=query_embedding,
         top_k=RETRIEVAL_K
     )
 
