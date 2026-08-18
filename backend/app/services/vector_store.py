@@ -586,6 +586,105 @@ class VectorStore:
         )
 
     # ==================================================
+    # Exact symbol / file matching
+    # ==================================================
+
+    @staticmethod
+    def _exact_match_type(
+        query: str,
+        document: dict
+    ) -> str:
+
+        """
+        Determine whether the query contains an exact
+        repository symbol and/or filename.
+
+        Returns:
+
+            "function_and_file"
+            "symbol"
+            "file"
+            ""
+        """
+
+        if not query:
+            return ""
+
+        query_lower = query.lower()
+
+        file_path = str(
+            document.get(
+                "file",
+                ""
+            )
+        ).replace(
+            "\\",
+            "/"
+        ).lower()
+
+        file_name = (
+            file_path
+            .split("/")[-1]
+        )
+
+        name = str(
+            document.get(
+                "name",
+                ""
+            )
+        ).strip().lower()
+
+        document_type = str(
+            document.get(
+                "type",
+                ""
+            )
+        ).lower()
+
+        exact_name = (
+            bool(name)
+            and len(name) > 2
+            and name in query_lower
+        )
+
+        exact_file = (
+            bool(file_name)
+            and file_name in query_lower
+        )
+
+        # Strongest case:
+        # exact symbol + exact file.
+        if (
+            exact_name
+            and exact_file
+            and document_type in {
+                "function",
+                "method",
+                "class",
+                "component"
+            }
+        ):
+            return "function_and_file"
+
+        # Exact symbol.
+        if (
+            exact_name
+            and document_type in {
+                "function",
+                "method",
+                "class",
+                "component"
+            }
+        ):
+            return "symbol"
+
+        # Exact file.
+        if exact_file:
+            return "file"
+
+        return ""
+
+    # ==================================================
     # Search
     # ==================================================
 
@@ -647,14 +746,49 @@ class VectorStore:
                 )
             )
 
-            # Semantic retrieval remains important,
-            # but explicit repository structure can now
-            # influence architecture questions.
+            # --------------------------------------------------
+            # Base hybrid score
+            # --------------------------------------------------
+
             combined_score = (
                 semantic_score * 0.55
                 + text_score * 0.25
                 + architecture_score * 0.20
             )
+
+            # --------------------------------------------------
+            # Exact symbol/file priority
+            #
+            # This is the important fix.
+            # --------------------------------------------------
+
+            exact_match = (
+                self._exact_match_type(
+                    query_text,
+                    document
+                )
+            )
+
+            if exact_match == "function_and_file":
+
+                combined_score = max(
+                    combined_score,
+                    1.0
+                )
+
+            elif exact_match == "symbol":
+
+                combined_score = max(
+                    combined_score,
+                    0.95
+                )
+
+            elif exact_match == "file":
+
+                combined_score = max(
+                    combined_score,
+                    0.85
+                )
 
             ranked_results.append(
                 {
@@ -662,63 +796,39 @@ class VectorStore:
                     "score": combined_score,
                     "semantic_score": semantic_score,
                     "text_score": text_score,
-                    "architecture_score": architecture_score
+                    "architecture_score": architecture_score,
+                    "exact_match": exact_match
                 }
             )
 
         # --------------------------------------------------
         # Explicit filename / symbol matches.
+        #
+        # Scan the complete document list so an exact
+        # function/file match is not lost because HNSW
+        # failed to return it in the semantic candidate pool.
         # --------------------------------------------------
 
         if query_text:
-
-            query_lower = query_text.lower()
 
             for index, document in enumerate(
                 self.documents
             ):
 
-                file_path = str(
-                    document.get(
-                        "file",
-                        ""
+                exact_match = (
+                    self._exact_match_type(
+                        query_text,
+                        document
                     )
-                ).replace(
-                    "\\",
-                    "/"
-                ).lower()
-
-                file_name = (
-                    file_path
-                    .split("/")[-1]
                 )
 
-                name = str(
-                    document.get(
-                        "name",
-                        ""
-                    )
-                ).lower()
-
-                explicit_match = (
-                    file_name
-                    and file_name in query_lower
-                ) or (
-                    name
-                    and len(name) > 2
-                    and name in query_lower
-                )
-
-                if not explicit_match:
+                if not exact_match:
                     continue
 
                 already_added = any(
                     item["document"] is document
                     for item in ranked_results
                 )
-
-                if already_added:
-                    continue
 
                 semantic_score = (
                     self.cosine_similarity(
@@ -747,15 +857,53 @@ class VectorStore:
                     + architecture_score * 0.20
                 )
 
-                ranked_results.append(
-                    {
-                        "document": document,
-                        "score": combined_score,
-                        "semantic_score": semantic_score,
-                        "text_score": text_score,
-                        "architecture_score": architecture_score
-                    }
-                )
+                # Strong deterministic priority.
+                if exact_match == "function_and_file":
+
+                    combined_score = 1.0
+
+                elif exact_match == "symbol":
+
+                    combined_score = max(
+                        combined_score,
+                        0.95
+                    )
+
+                elif exact_match == "file":
+
+                    combined_score = max(
+                        combined_score,
+                        0.85
+                    )
+
+                exact_result = {
+                    "document": document,
+                    "score": combined_score,
+                    "semantic_score": semantic_score,
+                    "text_score": text_score,
+                    "architecture_score": architecture_score,
+                    "exact_match": exact_match
+                }
+
+                if already_added:
+
+                    # Update the existing result instead
+                    # of adding a duplicate.
+                    for item in ranked_results:
+
+                        if item["document"] is document:
+
+                            item.update(
+                                exact_result
+                            )
+
+                            break
+
+                else:
+
+                    ranked_results.append(
+                        exact_result
+                    )
 
         # --------------------------------------------------
         # Architecture questions:
@@ -812,13 +960,39 @@ class VectorStore:
                     + architecture_score * 0.20
                 )
 
+                exact_match = (
+                    self._exact_match_type(
+                        query_text,
+                        document
+                    )
+                )
+
+                if exact_match == "function_and_file":
+
+                    combined_score = 1.0
+
+                elif exact_match == "symbol":
+
+                    combined_score = max(
+                        combined_score,
+                        0.95
+                    )
+
+                elif exact_match == "file":
+
+                    combined_score = max(
+                        combined_score,
+                        0.85
+                    )
+
                 architecture_documents.append(
                     {
                         "document": document,
                         "score": combined_score,
                         "semantic_score": semantic_score,
                         "text_score": text_score,
-                        "architecture_score": architecture_score
+                        "architecture_score": architecture_score,
+                        "exact_match": exact_match
                     }
                 )
 
@@ -861,9 +1035,24 @@ class VectorStore:
             diversified = []
             used_files = set()
 
+            # --------------------------------------------------
             # First pass:
-            # one strong result per file.
-            for result in filtered_results:
+            # exact/high-confidence results first.
+            # --------------------------------------------------
+
+            exact_results = [
+                result
+                for result in filtered_results
+                if result.get(
+                    "exact_match"
+                ) in {
+                    "function_and_file",
+                    "symbol",
+                    "file"
+                }
+            ]
+
+            for result in exact_results:
 
                 document = result[
                     "document"
@@ -890,8 +1079,48 @@ class VectorStore:
                 if len(diversified) >= top_k:
                     break
 
+            # --------------------------------------------------
             # Second pass:
+            # one strong result per file.
+            # --------------------------------------------------
+
+            if len(diversified) < top_k:
+
+                for result in filtered_results:
+
+                    if result in diversified:
+                        continue
+
+                    document = result[
+                        "document"
+                    ]
+
+                    file_path = str(
+                        document.get(
+                            "file",
+                            ""
+                        )
+                    )
+
+                    if file_path in used_files:
+                        continue
+
+                    used_files.add(
+                        file_path
+                    )
+
+                    diversified.append(
+                        result
+                    )
+
+                    if len(diversified) >= top_k:
+                        break
+
+            # --------------------------------------------------
+            # Third pass:
             # fill remaining positions.
+            # --------------------------------------------------
+
             if len(diversified) < top_k:
 
                 for result in filtered_results:
