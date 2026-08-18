@@ -1,74 +1,62 @@
 from app.services.code_index_service import build_code_index
 from app.services.embedding_service import generate_embedding
-from app.services.vector_store import VectorStore
-
-
-repository_path = "repositories/CodeForge-AI"
 
 
 print("Building code index...")
 
-hnsw_index = build_code_index(
-    repository_path
+index = build_code_index(
+    r"repositories\CodeForge-AI"
 )
 
 print("Index created.")
 
+print()
+print("======================")
+print("VECTOR SEARCH RESULTS")
+print("======================")
 
-# Create a separate brute-force store
-store = VectorStore()
-
-
-for index, document in enumerate(
-    hnsw_index.documents
-):
-
-    embedding = hnsw_index.vectors[index]
-
-    store.add(
-        document,
-        embedding
-    )
-
-
-question = (
-    "How does the API handle "
-    "repository analysis?"
-)
-
+question = "How does the API handle repository analysis?"
 
 query_embedding = generate_embedding(
     question
 )
 
-
-results = store.search(
+results = index.search(
     query_embedding,
-    top_k=5
+    top_k=5,
+    min_score=0.20
 )
 
+if not results:
 
-print("\n======================")
-print("BRUTE FORCE RESULTS")
-print("======================")
+    print("No relevant results found.")
 
+else:
 
-for result in results:
+    for result in results:
 
-    document = result["document"]
+        document = result["document"]
+        score = result["score"]
 
-    print(
-        f"\nFile: {document.get('file')}"
-    )
+        print()
+        print(
+            f"File: {document.get('file')}"
+        )
 
-    print(
-        f"Type: {document.get('type')}"
-    )
+        print(
+            f"Type: {document.get('type')}"
+        )
 
-    print(
-        f"Name: {document.get('name')}"
-    )
+        print(
+            f"Name: {document.get('name')}"
+        )
 
-    print(
-        f"Score: {result['score']:.4f}"
-    )
+        print(
+            f"Lines: "
+            f"{document.get('start_line')}-"
+            f"{document.get('end_line')}"
+        )
+
+        print(
+            f"Score: {score:.4f}"
+        )
